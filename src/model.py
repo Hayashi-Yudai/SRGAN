@@ -106,7 +106,7 @@ def make_generator():
             Conv2D(filters=256, kernel_size=3, padding="same"),
             PixelShuffler(),
             PReLU(),
-            Conv2D(filters=3, kernel_size=9),
+            Conv2D(filters=3, kernel_size=9, padding="same"),
         ]
     )
 
@@ -136,5 +136,5 @@ def make_descriminator():
 
 if __name__ == "__main__":
     model = make_descriminator()
-    model.build(input_shape=(None, 256, 256, 3))
+    model.build(input_shape=(None, 128, 128, 3))
     model.summary()
