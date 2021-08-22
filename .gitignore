@@ -1,3 +1,5 @@
 .venv
 Pipfile.lock
 notebooks/
+datasets/
+checkpoint/
