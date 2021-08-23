@@ -61,9 +61,9 @@ class ResidualBlock(Model):
         return x
 
 
-class DescriminatorBlock(Model):
+class DiscriminatorBlock(Model):
     def __init__(self, filters=128):
-        super(DescriminatorBlock, self).__init__()
+        super(DiscriminatorBlock, self).__init__()
         self.filters = filters
 
         self.conv1 = Conv2D(filters=filters, kernel_size=3, strides=1, padding="same")
@@ -113,7 +113,7 @@ def make_generator():
     return model
 
 
-def make_descriminator():
+def make_discriminator():
     model = Sequential(
         [
             Conv2D(filters=64, kernel_size=3, padding="same"),
@@ -121,9 +121,9 @@ def make_descriminator():
             Conv2D(filters=64, kernel_size=3, strides=2, padding="same"),
             BatchNormalization(),
             LeakyReLU(alpha=0.2),
-            DescriminatorBlock(128),
-            DescriminatorBlock(256),
-            DescriminatorBlock(512),
+            DiscriminatorBlock(128),
+            DiscriminatorBlock(256),
+            DiscriminatorBlock(512),
             Flatten(),
             Dense(1024),
             LeakyReLU(alpha=0.2),
@@ -135,6 +135,6 @@ def make_descriminator():
 
 
 if __name__ == "__main__":
-    model = make_descriminator()
+    model = make_discriminator()
     model.build(input_shape=(None, 128, 128, 3))
     model.summary()
