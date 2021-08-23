@@ -134,6 +134,23 @@ def make_discriminator():
     return model
 
 
+def build_model(height, width):
+    gen_model = make_generator()
+    disc_model = make_discriminator()
+
+    gen_model.build(input_shape=(None, height, width, 3))
+    disc_model.build(input_shape=(None, height * 4, width * 4, 3))
+
+    vgg = tf.keras.applications.vgg19.VGG19(include_top=False, weights="imagenet")
+    partial_vgg = tf.keras.Model(
+        inputs=vgg.input, outputs=vgg.get_layer("block2_conv2").output
+    )
+    partial_vgg.trainable = False
+    partial_vgg.build(input_shape=(None, height * 4, width * 4, 3))
+
+    return gen_model, disc_model, partial_vgg
+
+
 if __name__ == "__main__":
     model = make_discriminator()
     model.build(input_shape=(None, 128, 128, 3))

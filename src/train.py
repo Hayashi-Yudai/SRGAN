@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 # from tensorflow.keras import mixed_precision
 
-from model import make_generator, make_discriminator
+from model import build_model
 from losses import content_mse_loss
 
 config = ConfigProto()
@@ -66,23 +66,6 @@ def prepare_dataset():
     return low_image_train, high_image_train, low_image_valid, high_image_valid
 
 
-def build_model():
-    gen_model = make_generator()
-    disc_model = make_discriminator()
-
-    gen_model.build(input_shape=(None, IMG_HEIGHT, IMG_WIDTH, 3))
-    disc_model.build(input_shape=(None, IMG_HEIGHT * 4, IMG_WIDTH * 4, 3))
-
-    vgg = tf.keras.applications.vgg19.VGG19(include_top=False, weights="imagenet")
-    partial_vgg = tf.keras.Model(
-        inputs=vgg.input, outputs=vgg.get_layer("block2_conv2").output
-    )
-    partial_vgg.trainable = False
-    partial_vgg.build(input_shape=(None, IMG_HEIGHT * 4, IMG_WIDTH * 4, 3))
-
-    return gen_model, disc_model, partial_vgg
-
-
 def train_generator(
     gen_model, disc_model, partial_vgg, optimizer, input_high, input_low
 ):
@@ -128,15 +111,32 @@ def validate_generator(gen_model, disc_model, partial_vgg, input_low, input_high
     return g_loss
 
 
-def train():
-    if tf.config.list_physical_devices("GPU"):
-        device_name = tf.test.gpu_device_name()
-        # mixed_precision.set_global_policy("mixed_float16")
-    else:
-        device_name = "/CPU:0"
+def inference(gen_model):
+    validate_image = np.array(
+        Image.open(f"./datasets/{DATASET}/low_resolution/012523.jpg"),
+        dtype=np.float16,
+    )
+    validate_image = preprocess(validate_image)
+    output = (
+        (
+            gen_model(
+                validate_image.reshape([1, IMG_HEIGHT, IMG_WIDTH, 3]),
+                training=False,
+            )
+            * 255
+            + 122.5
+        )
+        .numpy()
+        .astype(np.uint8)
+    )
+    plt.figure()
+    plt.imshow(output[0])
+    plt.show()
 
+
+def train(device_name):
     with tf.device(device_name):
-        gen_model, disc_model, model = build_model()
+        gen_model, disc_model, model = build_model(IMG_HEIGHT, IMG_WIDTH)
 
     (
         low_image_train,
@@ -188,7 +188,7 @@ def train():
             )
             g_valid_losses.append(gen_loss)
         valid_loss = np.mean(g_valid_losses)
-        print(f"Validation| Generator-Loss: {valid_loss:.3f}")
+        print(f"Validation| Generator-Loss: {valid_loss:.3e}")
 
         if valid_loss < smallest_g_loss:
             gen_model.save_weights("./checkpoint/generator")
@@ -198,27 +198,14 @@ def train():
             print("Model saved")
 
         if epoch % 10 == 0:
-            validate_image = np.array(
-                Image.open(f"./datasets/{DATASET}/low_resolution/012523.jpg"),
-                dtype=np.float16,
-            )
-            validate_image = (validate_image - 122.5) / 255.0
-            output = (
-                (
-                    gen_model(
-                        validate_image.reshape([1, IMG_HEIGHT, IMG_WIDTH, 3]),
-                        training=False,
-                    )
-                    * 255
-                    + 122.5
-                )
-                .numpy()
-                .astype(np.uint8)
-            )
-            plt.figure()
-            plt.imshow(output[0])
-            plt.show()
+            inference(gen_model)
 
 
 if __name__ == "__main__":
-    train()
+    if tf.config.list_physical_devices("GPU"):
+        device_name = tf.test.gpu_device_name()
+        # mixed_precision.set_global_policy("mixed_float16")
+    else:
+        device_name = "/CPU:0"
+
+    train(device_name)
