@@ -22,6 +22,7 @@ BATCH_SIZE = 16
 IMG_HEIGHT = 32
 IMG_WIDTH = 32
 DATASET = "celeb"
+TRAIN_RATIO = 0.8
 
 
 def preprocess(image):
@@ -31,7 +32,9 @@ def preprocess(image):
 
 
 def prepare_dataset():
+    print("Loading dataset...")
     low_image_files = glob.glob(f"./datasets/{DATASET}/low_resolution/*.jpg")
+    train_length = int(len(low_image_files) * TRAIN_RATIO)
     low_image_dataset = tf.data.Dataset.from_tensor_slices(
         np.stack(
             [
@@ -40,7 +43,7 @@ def prepare_dataset():
             ]
         )
     )
-    low_image_dataset = low_image_dataset.batch(BATCH_SIZE)
+    low_image_dataset = low_image_dataset
     high_image_files = [
         file_name.replace("low", "high") for file_name in low_image_files
     ]
@@ -52,9 +55,15 @@ def prepare_dataset():
             ]
         )
     )
-    high_image_dataset = high_image_dataset.batch(BATCH_SIZE)
+    high_image_dataset = high_image_dataset
 
-    return low_image_dataset, high_image_dataset
+    low_image_train = low_image_dataset.take(train_length).batch(BATCH_SIZE)
+    high_image_train = high_image_dataset.take(train_length).batch(BATCH_SIZE)
+    low_image_valid = low_image_dataset.skip(train_length).batch(BATCH_SIZE)
+    high_image_valid = high_image_dataset.skip(train_length).batch(BATCH_SIZE)
+    print("Dataset is loaded!")
+
+    return low_image_train, high_image_train, low_image_valid, high_image_valid
 
 
 def build_model():
@@ -111,6 +120,14 @@ def train_discriminator(
     return d_loss
 
 
+def validate_generator(gen_model, disc_model, partial_vgg, input_low, input_high):
+    g_output = gen_model(input_low)
+    d_output = disc_model(g_output)
+    g_loss = content_mse_loss(input_high, g_output, d_output, model=partial_vgg)
+
+    return g_loss
+
+
 def train():
     if tf.config.list_physical_devices("GPU"):
         device_name = tf.test.gpu_device_name()
@@ -121,7 +138,12 @@ def train():
     with tf.device(device_name):
         gen_model, disc_model, model = build_model()
 
-    low_image_dataset, high_image_dataset = prepare_dataset()
+    (
+        low_image_train,
+        high_image_train,
+        low_image_valid,
+        high_image_valid,
+    ) = prepare_dataset()
     disc_loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)
     gen_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
     disc_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
@@ -131,7 +153,7 @@ def train():
     for epoch in range(EPOCHS):
         g_losses = []
         d_losses = []
-        for input_high, input_low in tqdm(zip(high_image_dataset, low_image_dataset)):
+        for input_high, input_low in tqdm(zip(high_image_train, low_image_train)):
             g_loss = train_generator(
                 gen_model=gen_model,
                 disc_model=disc_model,
@@ -154,16 +176,27 @@ def train():
 
         g_loss_mean = np.mean(g_losses)
         d_loss_mean = np.mean(d_losses)
-        if g_loss_mean < smallest_g_loss:
+        print(
+            f"Epoch {epoch + 1}| Generator-Loss: {g_loss_mean:.3e},",
+            f"Discriminator-Loss: {d_loss_mean:.3e}",
+        )
+
+        g_valid_losses = []
+        for low_valid, high_valid in tqdm(zip(low_image_valid, high_image_valid)):
+            gen_loss = validate_generator(
+                gen_model, disc_model, model, low_valid, high_valid
+            )
+            g_valid_losses.append(gen_loss)
+        valid_loss = np.mean(g_valid_losses)
+        print(f"Validation| Generator-Loss: {valid_loss:.3f}")
+
+        if valid_loss < smallest_g_loss:
             gen_model.save_weights("./checkpoint/generator")
             disc_model.save_weights("./checkpoint/discriminator")
 
             smallest_g_loss = g_loss_mean
             print("Model saved")
-        print(
-            f"Epoch {epoch + 1}| Generator-Loss: {g_loss_mean:.3e},",
-            f"Discriminator-Loss: {d_loss_mean:.3e}",
-        )
+
         if epoch % 10 == 0:
             validate_image = np.array(
                 Image.open(f"./datasets/{DATASET}/low_resolution/012523.jpg"),
