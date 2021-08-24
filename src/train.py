@@ -23,6 +23,7 @@ IMG_HEIGHT = 32
 IMG_WIDTH = 32
 DATASET = "celeb"
 TRAIN_RATIO = 0.8
+LEARNING_RATE = 1e-4
 
 
 def preprocess(image):
@@ -38,7 +39,7 @@ def prepare_dataset():
     low_image_dataset = tf.data.Dataset.from_tensor_slices(
         np.stack(
             [
-                (np.array(Image.open(file_name), dtype=np.float16) - 122.5) / 255.0
+                preprocess(np.array(Image.open(file_name), dtype=np.float16))
                 for file_name in low_image_files
             ]
         )
@@ -50,7 +51,7 @@ def prepare_dataset():
     high_image_dataset = tf.data.Dataset.from_tensor_slices(
         np.stack(
             [
-                (np.array(Image.open(file_name), dtype=np.float16) - 122.5) / 255.0
+                preprocess(np.array(Image.open(file_name), dtype=np.float16))
                 for file_name in high_image_files
             ]
         )
@@ -145,8 +146,8 @@ def train(device_name):
         high_image_valid,
     ) = prepare_dataset()
     disc_loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)
-    gen_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
-    disc_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+    gen_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
+    disc_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
 
     smallest_g_loss = 1e9
 
