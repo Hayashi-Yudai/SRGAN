@@ -21,13 +21,13 @@ class BResidualBlock(Model):
         self.conv2 = Conv2D(filters=64, kernel_size=3, strides=1, padding="same")
         self.bn2 = BatchNormalization()
 
-    def call(self, input_tensor, training=False):
+    def call(self, input_tensor, training=True):
         x = self.conv(input_tensor)
-        x = self.bn(x)
+        x = self.bn(x, training=training)
         x = self.prelu(x)
 
         x = self.conv2(x)
-        x = self.bn2(x)
+        x = self.bn2(x, training=training)
         x += input_tensor
 
         return x
@@ -46,12 +46,12 @@ class ResidualBlock(Model):
         self.conv = Conv2D(filters=64, kernel_size=3, padding="same")
         self.bn = BatchNormalization()
 
-    def call(self, input_tensor):
+    def call(self, input_tensor, training=True):
         x = self.residual1(input_tensor)
-        x = self.residual2(x)
-        x = self.residual3(x)
-        x = self.residual4(x)
-        x = self.residual5(x)
+        x = self.residual2(x, training=training)
+        x = self.residual3(x, training=training)
+        x = self.residual4(x, training=training)
+        x = self.residual5(x, training=training)
 
         x = self.conv(x)
         x = self.bn(x)
@@ -73,12 +73,12 @@ class DiscriminatorBlock(Model):
         self.bn2 = BatchNormalization()
         self.lrelu2 = LeakyReLU(alpha=0.2)
 
-    def call(self, input_tensor):
+    def call(self, input_tensor, training=True):
         x = self.conv1(input_tensor)
-        x = self.bn1(x)
+        x = self.bn1(x, training=training)
         x = self.lrelu1(x)
         x = self.conv2(x)
-        x = self.bn2(x)
+        x = self.bn2(x, training=training)
         x = self.lrelu2(x)
 
         return x
