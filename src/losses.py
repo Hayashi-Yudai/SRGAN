@@ -3,7 +3,7 @@ import tensorflow as tf
 
 def adversarial_loss(y_pred: tf.Tensor) -> tf.Tensor:
     # Add penalty only for fake input
-    return -tf.reduce_mean(tf.math.log(tf.clip_by_value(y_pred, 1e-10, 1.0)))
+    return -tf.reduce_sum(tf.math.log(tf.clip_by_value(y_pred, 1e-10, 1.0)))
 
 
 def content_mse_loss(

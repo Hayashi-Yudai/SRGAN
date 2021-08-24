@@ -194,7 +194,7 @@ def train(device_name):
             gen_model.save_weights("./checkpoint/generator")
             disc_model.save_weights("./checkpoint/discriminator")
 
-            smallest_g_loss = g_loss_mean
+            smallest_g_loss = valid_loss
             print("Model saved")
 
         if epoch % 10 == 0:
