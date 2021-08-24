@@ -1,6 +1,6 @@
+import datetime
 import glob
 import numpy as np
-import matplotlib.pyplot as plt
 import tensorflow as tf
 from PIL import Image
 from tensorflow.compat.v1 import ConfigProto
@@ -105,34 +105,11 @@ def train_discriminator(
 
 
 def validate_generator(gen_model, disc_model, partial_vgg, input_low, input_high):
-    g_output = gen_model(input_low)
-    d_output = disc_model(g_output)
+    g_output = gen_model(input_low, training=False)
+    d_output = disc_model(g_output, training=False)
     g_loss = content_mse_loss(input_high, g_output, d_output, model=partial_vgg)
 
     return g_loss
-
-
-def inference(gen_model):
-    validate_image = np.array(
-        Image.open(f"./datasets/{DATASET}/low_resolution/012523.jpg"),
-        dtype=np.float16,
-    )
-    validate_image = preprocess(validate_image)
-    output = (
-        (
-            gen_model(
-                validate_image.reshape([1, IMG_HEIGHT, IMG_WIDTH, 3]),
-                training=False,
-            )
-            * 255
-            + 122.5
-        )
-        .numpy()
-        .astype(np.uint8)
-    )
-    plt.figure()
-    plt.imshow(output[0])
-    plt.show()
 
 
 def train(device_name):
@@ -148,6 +125,12 @@ def train(device_name):
     disc_loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)
     gen_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
     disc_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
+
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    train_log_dir = "./logs/" + current_time + "/train"
+    valid_log_dir = "./logs/" + current_time + "/valid"
+    train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+    valid_summary_writer = tf.summary.create_file_writer(valid_log_dir)
 
     smallest_g_loss = 1e9
 
@@ -198,8 +181,11 @@ def train(device_name):
             smallest_g_loss = valid_loss
             print("Model saved")
 
-        if epoch % 10 == 0:
-            inference(gen_model)
+        with train_summary_writer.as_default():
+            tf.summary.scalar("g_loss", g_loss_mean, step=epoch)
+            tf.summary.scalar("d_loss", d_loss_mean, step=epoch)
+        with valid_summary_writer.as_default():
+            tf.summary.scalar("g_loss", valid_loss, step=epoch)
 
 
 if __name__ == "__main__":
