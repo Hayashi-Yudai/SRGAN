@@ -21,9 +21,10 @@ EPOCHS = 100
 BATCH_SIZE = 16
 IMG_HEIGHT = 32
 IMG_WIDTH = 32
-DATASET = "celeb"
-TRAIN_RATIO = 0.8
+DATASET = "DIV2K_train_HR"
 LEARNING_RATE = 1e-4
+START_EPOCH = 0
+USE_WEIGHT = False
 
 
 def preprocess(image):
@@ -34,34 +35,50 @@ def preprocess(image):
 
 def prepare_dataset():
     print("Loading dataset...")
-    low_image_files = glob.glob(f"./datasets/{DATASET}/low_resolution/*.jpg")
-    train_length = int(len(low_image_files) * TRAIN_RATIO)
-    low_image_dataset = tf.data.Dataset.from_tensor_slices(
+    low_image_files = glob.glob("./datasets/DIV2K_train_HR/train/low_resolution/*.png")
+    low_image_train = tf.data.Dataset.from_tensor_slices(
         np.stack(
             [
                 preprocess(np.array(Image.open(file_name), dtype=np.float16))
                 for file_name in low_image_files
             ]
         )
-    )
-    low_image_dataset = low_image_dataset
+    ).batch(BATCH_SIZE)
     high_image_files = [
         file_name.replace("low", "high") for file_name in low_image_files
     ]
-    high_image_dataset = tf.data.Dataset.from_tensor_slices(
+    high_image_train = tf.data.Dataset.from_tensor_slices(
         np.stack(
             [
                 preprocess(np.array(Image.open(file_name), dtype=np.float16))
                 for file_name in high_image_files
             ]
         )
-    )
-    high_image_dataset = high_image_dataset
+    ).batch(BATCH_SIZE)
 
-    low_image_train = low_image_dataset.take(train_length).batch(BATCH_SIZE)
-    high_image_train = high_image_dataset.take(train_length).batch(BATCH_SIZE)
-    low_image_valid = low_image_dataset.skip(train_length).batch(BATCH_SIZE)
-    high_image_valid = high_image_dataset.skip(train_length).batch(BATCH_SIZE)
+    low_image_files = glob.glob(
+        "./datasets/DIV2K_train_HR/validate/low_resolution/*.png"
+    )
+    low_image_valid = tf.data.Dataset.from_tensor_slices(
+        np.stack(
+            [
+                preprocess(np.array(Image.open(file_name), dtype=np.float16))
+                for file_name in low_image_files
+            ]
+        )
+    ).batch(BATCH_SIZE)
+    high_image_files = [
+        file_name.replace("low", "high") for file_name in low_image_files
+    ]
+    high_image_valid = tf.data.Dataset.from_tensor_slices(
+        np.stack(
+            [
+                preprocess(np.array(Image.open(file_name), dtype=np.float16))
+                for file_name in high_image_files
+            ]
+        )
+    ).batch(BATCH_SIZE)
+
     print("Dataset is loaded!")
 
     return low_image_train, high_image_train, low_image_valid, high_image_valid
@@ -114,7 +131,7 @@ def validate_generator(gen_model, disc_model, partial_vgg, input_low, input_high
 
 def train(device_name):
     with tf.device(device_name):
-        gen_model, disc_model, model = build_model(IMG_HEIGHT, IMG_WIDTH)
+        gen_model, disc_model, model = build_model(IMG_HEIGHT, IMG_WIDTH, USE_WEIGHT)
 
     (
         low_image_train,
@@ -134,7 +151,7 @@ def train(device_name):
 
     smallest_g_loss = 1e9
 
-    for epoch in range(EPOCHS):
+    for epoch in range(START_EPOCH, EPOCHS):
         g_losses = []
         d_losses = []
         for input_high, input_low in tqdm(zip(high_image_train, low_image_train)):
@@ -175,8 +192,8 @@ def train(device_name):
         print(f"Validation| Generator-Loss: {valid_loss:.3e}")
 
         if valid_loss < smallest_g_loss:
-            gen_model.save_weights("./checkpoint/generator")
-            disc_model.save_weights("./checkpoint/discriminator")
+            gen_model.save_weights("./checkpoint/vgg54/generator_best")
+            disc_model.save_weights("./checkpoint/vgg54/discriminator_best")
 
             smallest_g_loss = valid_loss
             print("Model saved")
@@ -186,6 +203,9 @@ def train(device_name):
             tf.summary.scalar("d_loss", d_loss_mean, step=epoch)
         with valid_summary_writer.as_default():
             tf.summary.scalar("g_loss", valid_loss, step=epoch)
+
+        gen_model.save_weights("./checkpoint/vgg54/generator_last")
+        disc_model.save_weights("./checkpoint/vgg54/discriminator_last")
 
 
 if __name__ == "__main__":
