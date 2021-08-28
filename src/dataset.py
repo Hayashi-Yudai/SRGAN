@@ -1,5 +1,8 @@
+import numpy as np
 import tensorflow as tf
+from tqdm import tqdm
 import yaml
+from PIL import Image
 
 
 def prepare_from_tfrecords():
@@ -51,3 +54,51 @@ def prepare_from_tfrecords():
     print("Dataset is loaded!")
 
     return parsed_train_dataset, parsed_valid_dataset
+
+
+def _bytes_feature(value):
+    if isinstance(value, type(tf.constant(0))):
+        value = value.numpy()  # BytesList won't unpack a string from an EagerTensor.
+    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+
+
+def make_tfrecords():
+    high_image_files = tf.io.gfile.glob(
+        "./datasets/DIV2K_train_HR/train/high_resolution/*.png"
+    )
+    low_image_files = [image.replace("high", "low") for image in high_image_files]
+
+    with tf.io.TFRecordWriter("train.tfrecords") as writer:
+        for high_img_file, low_img_file in tqdm(zip(high_image_files, low_image_files)):
+            high_image_string = (
+                np.array(Image.open(high_img_file)).astype(np.uint8).tobytes()
+            )
+            low_image_string = (
+                np.array(Image.open(low_img_file)).astype(np.uint8).tobytes()
+            )
+            feature = {
+                "high_image_raw": _bytes_feature(high_image_string),
+                "low_image_raw": _bytes_feature(low_image_string),
+            }
+            tf_example = tf.train.Example(features=tf.train.Features(feature=feature))
+            writer.write(tf_example.SerializeToString())
+
+    high_image_files = tf.io.gfile.glob(
+        "./datasets/DIV2K_train_HR/validate/high_resolution/*.png"
+    )
+    low_image_files = [image.replace("high", "low") for image in high_image_files]
+
+    with tf.io.TFRecordWriter("valid.tfrecords") as writer:
+        for high_img_file, low_img_file in tqdm(zip(high_image_files, low_image_files)):
+            high_image_string = (
+                np.array(Image.open(high_img_file)).astype(np.uint8).tobytes()
+            )
+            low_image_string = (
+                np.array(Image.open(low_img_file)).astype(np.uint8).tobytes()
+            )
+            feature = {
+                "high_image_raw": _bytes_feature(high_image_string),
+                "low_image_raw": _bytes_feature(low_image_string),
+            }
+            tf_example = tf.train.Example(features=tf.train.Features(feature=feature))
+            writer.write(tf_example.SerializeToString())
