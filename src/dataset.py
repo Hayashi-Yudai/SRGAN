@@ -62,13 +62,13 @@ def _bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
-def make_tfrecords():
+def make_tfrecords(dataset_name, extension="png"):
     high_image_files = tf.io.gfile.glob(
-        "./datasets/DIV2K_train_HR/train/high_resolution/*.png"
+        f"./datasets/{dataset_name}/train/high_resolution/*.{extension}"
     )
     low_image_files = [image.replace("high", "low") for image in high_image_files]
 
-    with tf.io.TFRecordWriter("train.tfrecords") as writer:
+    with tf.io.TFRecordWriter(f"./datasets/{dataset_name}/train.tfrecords") as writer:
         for high_img_file, low_img_file in tqdm(zip(high_image_files, low_image_files)):
             high_image_string = (
                 np.array(Image.open(high_img_file)).astype(np.uint8).tobytes()
@@ -84,11 +84,11 @@ def make_tfrecords():
             writer.write(tf_example.SerializeToString())
 
     high_image_files = tf.io.gfile.glob(
-        "./datasets/DIV2K_train_HR/validate/high_resolution/*.png"
+        f"./datasets/{dataset_name}/validate/high_resolution/*.{extension}"
     )
     low_image_files = [image.replace("high", "low") for image in high_image_files]
 
-    with tf.io.TFRecordWriter("valid.tfrecords") as writer:
+    with tf.io.TFRecordWriter(f"./datasets/{dataset_name}/valid.tfrecords") as writer:
         for high_img_file, low_img_file in tqdm(zip(high_image_files, low_image_files)):
             high_image_string = (
                 np.array(Image.open(high_img_file)).astype(np.uint8).tobytes()
@@ -102,3 +102,10 @@ def make_tfrecords():
             }
             tf_example = tf.train.Example(features=tf.train.Features(feature=feature))
             writer.write(tf_example.SerializeToString())
+
+
+if __name__ == "__main__":
+    dataset_name = "YOUR DATASET NAME"
+    extension = "Image extension (png, jpeg, ...)"
+
+    make_tfrecords(dataset_name, extension)
