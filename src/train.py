@@ -2,66 +2,13 @@ import datetime
 import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
+import yaml
 
 # from tensorflow.keras import mixed_precision
 
 from model import build_model
 from losses import content_mse_loss
-
-
-EPOCHS = 100
-BATCH_SIZE = 16
-IMG_HEIGHT = 32
-IMG_WIDTH = 32
-LEARNING_RATE = 1e-4
-TRAIN_DATA_PATH = "gs://div2k_dataset/train.tfrecords"
-VALIDATE_DATA_PATH = "gs://div2k_dataset/valid.tfrecords"
-CHECKPOINT_PATH = "./checkpoint/test"
-START_EPOCH = 26
-WEIGHT = "./checkpoint/vgg54"
-G_LOSS = 0.05602
-
-
-def prepare_from_tfrecords():
-    print("Loading dataset ...")
-    # Load training dataset
-    raw_image_dataset = tf.data.TFRecordDataset(TRAIN_DATA_PATH)
-    image_feature_description = {
-        "high_image_raw": tf.io.FixedLenFeature([], tf.string),
-        "low_image_raw": tf.io.FixedLenFeature([], tf.string),
-    }
-
-    def _parse_image_dataset(example_proto):
-        example = tf.io.parse_single_example(example_proto, image_feature_description)
-        high_image = tf.reshape(
-            tf.io.decode_raw(example["high_image_raw"], tf.uint8),
-            (IMG_HEIGHT * 4, IMG_WIDTH * 4, 3),
-        )
-        low_image = tf.reshape(
-            tf.io.decode_raw(example["low_image_raw"], tf.uint8),
-            (IMG_HEIGHT, IMG_WIDTH, 3),
-        )
-        high_image = tf.cast(high_image, tf.float16)
-        low_image = tf.cast(low_image, tf.float16)
-
-        high_image = (high_image - 122.5) / 255.0
-        low_image = (low_image - 122.5) / 255.0
-
-        return {"high": high_image, "low": low_image}
-
-    parsed_train_dataset = raw_image_dataset.map(_parse_image_dataset).batch(BATCH_SIZE)
-
-    # Load validation dataset
-    raw_image_dataset = tf.data.TFRecordDataset(VALIDATE_DATA_PATH)
-    image_feature_description = {
-        "high_image_raw": tf.io.FixedLenFeature([], tf.string),
-        "low_image_raw": tf.io.FixedLenFeature([], tf.string),
-    }
-
-    parsed_valid_dataset = raw_image_dataset.map(_parse_image_dataset).batch(BATCH_SIZE)
-    print("Dataset is loaded!")
-
-    return parsed_train_dataset, parsed_valid_dataset
+from dataset import prepare_from_tfrecords
 
 
 def train_generator(
@@ -203,5 +150,17 @@ if __name__ == "__main__":
         # mixed_precision.set_global_policy("mixed_float16")
     else:
         device_name = "/CPU:0"
+
+    with open("config.yaml") as yfile:
+        config = yaml.safe_load(yfile)
+
+        EPOCHS = config["EPOCHS"]
+        IMG_HEIGHT = config["IMG_HEIGHT"]
+        IMG_WIDTH = config["IMG_WIDTH"]
+        LEARNING_RATE = config["LEARNING_RATE"]
+        CHECKPOINT_PATH = config["CHECKPOINT_PATH"]
+        START_EPOCH = config["START_EPOCH"]
+        WEIGHT = config["WEIGHT"]
+        G_LOSS = config["G_LOSS"]
 
     train(device_name)
