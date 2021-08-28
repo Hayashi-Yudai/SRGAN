@@ -7,7 +7,7 @@
 
 ## Network structure
 
-![[https://arxiv.org/pdf/1609.04802.pdf](https://arxiv.org/pdf/1609.04802.pdf)](https://github.com/Hayashi-Yudai/SRGAN/assets/network_img.png)
+![https://arxiv.org/pdf/1609.04802.pdf](https://github.com/Hayashi-Yudai/SRGAN/blob/main/assets/network_img.png)
 
 
 ## How to train
