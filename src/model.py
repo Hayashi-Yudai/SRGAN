@@ -143,8 +143,8 @@ def build_model(height: int, width: int, use_weights: bool):
 
     if use_weights:
         print("Loading weights...")
-        gen_model.load_weights("./checkpoint/generator")
-        disc_model.load_weights("./checkpoint/discriminator")
+        gen_model.load_weights("./checkpoint/vgg54/generator_last")
+        disc_model.load_weights("./checkpoint/vgg54/discriminator_last")
 
     vgg = tf.keras.applications.vgg19.VGG19(include_top=False, weights="imagenet")
     partial_vgg = tf.keras.Model(
