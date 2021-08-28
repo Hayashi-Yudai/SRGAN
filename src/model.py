@@ -134,17 +134,17 @@ def make_discriminator():
     return model
 
 
-def build_model(height: int, width: int, use_weights: bool):
+def build_model(height: int, width: int, weight: str):
     gen_model = make_generator()
     disc_model = make_discriminator()
 
     gen_model.build(input_shape=(None, height, width, 3))
     disc_model.build(input_shape=(None, height * 4, width * 4, 3))
 
-    if use_weights:
+    if weight != "":
         print("Loading weights...")
-        gen_model.load_weights("./checkpoint/vgg54/generator_last")
-        disc_model.load_weights("./checkpoint/vgg54/discriminator_last")
+        gen_model.load_weights(f"{weight}/generator_last")
+        disc_model.load_weights(f"{weight}/discriminator_last")
 
     vgg = tf.keras.applications.vgg19.VGG19(include_top=False, weights="imagenet")
     partial_vgg = tf.keras.Model(

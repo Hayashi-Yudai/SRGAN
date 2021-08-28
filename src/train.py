@@ -16,11 +16,14 @@ IMG_WIDTH = 32
 LEARNING_RATE = 1e-4
 TRAIN_DATA_PATH = "gs://div2k_dataset/train.tfrecords"
 VALIDATE_DATA_PATH = "gs://div2k_dataset/valid.tfrecords"
+CHECKPOINT_PATH = "./checkpoint/test"
 START_EPOCH = 26
-USE_WEIGHT = True
+WEIGHT = "./checkpoint/vgg54"
+G_LOSS = 0.05602
 
 
 def prepare_from_tfrecords():
+    print("Loading dataset ...")
     # Load training dataset
     raw_image_dataset = tf.data.TFRecordDataset(TRAIN_DATA_PATH)
     image_feature_description = {
@@ -56,6 +59,7 @@ def prepare_from_tfrecords():
     }
 
     parsed_valid_dataset = raw_image_dataset.map(_parse_image_dataset).batch(BATCH_SIZE)
+    print("Dataset is loaded!")
 
     return parsed_train_dataset, parsed_valid_dataset
 
@@ -105,24 +109,39 @@ def validate_generator(gen_model, disc_model, partial_vgg, input_low, input_high
     return g_loss
 
 
+class SummaryWriter:
+    def __init__(self):
+        self.epoch = START_EPOCH
+        current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        train_log_dir = "./logs/" + current_time + "/train"
+        valid_log_dir = "./logs/" + current_time + "/valid"
+        self.train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+        self.valid_summary_writer = tf.summary.create_file_writer(valid_log_dir)
+
+    def write(self, g_loss_mean, d_loss_mean, valid_loss):
+        with self.train_summary_writer.as_default():
+            tf.summary.scalar("g_loss", g_loss_mean, step=self.epoch)
+            tf.summary.scalar("d_loss", d_loss_mean, step=self.epoch)
+        with self.valid_summary_writer.as_default():
+            tf.summary.scalar("g_loss", valid_loss, step=self.epoch)
+
+        self.epoch += 1
+
+
 def train(device_name):
     with tf.device(device_name):
-        gen_model, disc_model, model = build_model(IMG_HEIGHT, IMG_WIDTH, USE_WEIGHT)
+        gen_model, disc_model, model = build_model(IMG_HEIGHT, IMG_WIDTH, WEIGHT)
 
     train_data, valid_data = prepare_from_tfrecords()
     disc_loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)
     gen_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
     disc_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
 
-    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    train_log_dir = "./logs/" + current_time + "/train"
-    valid_log_dir = "./logs/" + current_time + "/valid"
-    train_summary_writer = tf.summary.create_file_writer(train_log_dir)
-    valid_summary_writer = tf.summary.create_file_writer(valid_log_dir)
+    writer = SummaryWriter()
 
     smallest_g_loss = 1e9
-    if USE_WEIGHT:
-        smallest_g_loss = 0.05602
+    if WEIGHT != "":
+        smallest_g_loss = G_LOSS
 
     for epoch in range(START_EPOCH, EPOCHS):
         g_losses = []
@@ -166,20 +185,16 @@ def train(device_name):
         print(f"Validation| Generator-Loss: {valid_loss:.3e}")
 
         if valid_loss < smallest_g_loss:
-            gen_model.save_weights("./checkpoint/test/generator_best")
-            disc_model.save_weights("./checkpoint/test/discriminator_best")
+            gen_model.save_weights(f"{CHECKPOINT_PATH}/generator_best")
+            disc_model.save_weights(f"{CHECKPOINT_PATH}/discriminator_best")
 
             smallest_g_loss = valid_loss
             print("Model saved")
 
-        with train_summary_writer.as_default():
-            tf.summary.scalar("g_loss", g_loss_mean, step=epoch)
-            tf.summary.scalar("d_loss", d_loss_mean, step=epoch)
-        with valid_summary_writer.as_default():
-            tf.summary.scalar("g_loss", valid_loss, step=epoch)
+        writer.write(g_loss_mean, d_loss_mean, valid_loss)
 
-        gen_model.save_weights("./checkpoint/test/generator_last")
-        disc_model.save_weights("./checkpoint/test/discriminator_last")
+        gen_model.save_weights(f"{CHECKPOINT_PATH}/generator_last")
+        disc_model.save_weights(f"{CHECKPOINT_PATH}/discriminator_last")
 
 
 if __name__ == "__main__":
