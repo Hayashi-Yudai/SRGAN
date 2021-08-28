@@ -1,10 +1,6 @@
 import datetime
-import glob
 import numpy as np
 import tensorflow as tf
-from PIL import Image
-from tensorflow.compat.v1 import ConfigProto
-from tensorflow.compat.v1 import InteractiveSession
 from tqdm import tqdm
 
 # from tensorflow.keras import mixed_precision
@@ -12,74 +8,56 @@ from tqdm import tqdm
 from model import build_model
 from losses import content_mse_loss
 
-config = ConfigProto()
-config.gpu_options.allow_growth = True
-session = InteractiveSession(config=config)
-
 
 EPOCHS = 100
 BATCH_SIZE = 16
 IMG_HEIGHT = 32
 IMG_WIDTH = 32
-DATASET = "DIV2K_train_HR"
 LEARNING_RATE = 1e-4
+TRAIN_DATA_PATH = "gs://div2k_dataset/train.tfrecords"
+VALIDATE_DATA_PATH = "gs://div2k_dataset/valid.tfrecords"
 START_EPOCH = 26
 USE_WEIGHT = True
 
 
-def preprocess(image):
-    image = (image - 122.5) / 255.0
+def prepare_from_tfrecords():
+    # Load training dataset
+    raw_image_dataset = tf.data.TFRecordDataset(TRAIN_DATA_PATH)
+    image_feature_description = {
+        "high_image_raw": tf.io.FixedLenFeature([], tf.string),
+        "low_image_raw": tf.io.FixedLenFeature([], tf.string),
+    }
 
-    return image
+    def _parse_image_dataset(example_proto):
+        example = tf.io.parse_single_example(example_proto, image_feature_description)
+        high_image = tf.reshape(
+            tf.io.decode_raw(example["high_image_raw"], tf.uint8),
+            (IMG_HEIGHT * 4, IMG_WIDTH * 4, 3),
+        )
+        low_image = tf.reshape(
+            tf.io.decode_raw(example["low_image_raw"], tf.uint8),
+            (IMG_HEIGHT, IMG_WIDTH, 3),
+        )
+        high_image = tf.cast(high_image, tf.float16)
+        low_image = tf.cast(low_image, tf.float16)
 
+        high_image = (high_image - 122.5) / 255.0
+        low_image = (low_image - 122.5) / 255.0
 
-def prepare_dataset():
-    print("Loading dataset...")
-    low_image_files = glob.glob("./datasets/DIV2K_train_HR/train/low_resolution/*.png")
-    high_image_files = [
-        file_name.replace("low", "high") for file_name in low_image_files
-    ]
+        return {"high": high_image, "low": low_image}
 
-    low_images_train = np.stack(
-        [
-            preprocess(np.array(Image.open(file_name), dtype=np.float16))
-            for file_name in low_image_files
-        ]
-    )
-    high_images_train = np.stack(
-        [
-            preprocess(np.array(Image.open(file_name), dtype=np.float16))
-            for file_name in high_image_files
-        ]
-    )
-    train_dataset = tf.data.Dataset.from_tensor_slices(
-        {"low": low_images_train, "high": high_images_train}
-    ).batch(BATCH_SIZE)
+    parsed_train_dataset = raw_image_dataset.map(_parse_image_dataset).batch(BATCH_SIZE)
 
-    low_image_files = glob.glob(
-        "./datasets/DIV2K_train_HR/validate/low_resolution/*.png"
-    )
-    high_image_files = [
-        file_name.replace("low", "high") for file_name in low_image_files
-    ]
+    # Load validation dataset
+    raw_image_dataset = tf.data.TFRecordDataset(VALIDATE_DATA_PATH)
+    image_feature_description = {
+        "high_image_raw": tf.io.FixedLenFeature([], tf.string),
+        "low_image_raw": tf.io.FixedLenFeature([], tf.string),
+    }
 
-    low_images_valid = np.stack(
-        [
-            preprocess(np.array(Image.open(file_name), dtype=np.float16))
-            for file_name in low_image_files
-        ]
-    )
-    high_images_valid = np.stack(
-        [
-            preprocess(np.array(Image.open(file_name), dtype=np.float16))
-            for file_name in high_image_files
-        ]
-    )
-    valid_dataset = tf.data.Dataset.from_tensor_slices(
-        {"low": low_images_valid, "high": high_images_valid}
-    ).batch(BATCH_SIZE)
+    parsed_valid_dataset = raw_image_dataset.map(_parse_image_dataset).batch(BATCH_SIZE)
 
-    return train_dataset, valid_dataset
+    return parsed_train_dataset, parsed_valid_dataset
 
 
 def train_generator(
@@ -131,7 +109,7 @@ def train(device_name):
     with tf.device(device_name):
         gen_model, disc_model, model = build_model(IMG_HEIGHT, IMG_WIDTH, USE_WEIGHT)
 
-    train_data, valid_data = prepare_dataset()
+    train_data, valid_data = prepare_from_tfrecords()
     disc_loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)
     gen_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
     disc_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
