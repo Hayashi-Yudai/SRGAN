@@ -1,166 +1,197 @@
 import datetime
-import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
-import yaml
-
-# from tensorflow.keras import mixed_precision
+import numpy as np
 
 from model import build_model
-from losses import content_mse_loss
 from dataset import prepare_from_tfrecords
 
 
-def train_generator(
-    gen_model, disc_model, partial_vgg, optimizer, input_high, input_low
-):
-    with tf.GradientTape() as g_tape:
-        g_output = gen_model(input_low)
-        d_output = disc_model(g_output)
-        g_loss = content_mse_loss(input_high, g_output, d_output, model=partial_vgg)
+class SRGANTrainer:
+    def __init__(
+        self,
+        epochs: int = 100,
+        batch_size: int = 16,
+        learning_rate: float = 1e-5,
+        height: int = 32,
+        width: int = 32,
+        weight: str = None,
+        checkpoint_path: str = "./checkpoints",
+        best_generator_loss: float = 1e9,
+    ):
+        # -----------------------------
+        # Hyper-parameters
+        # -----------------------------
+        self.epochs = epochs
+        self.batch_size = batch_size
 
-    g_grads = g_tape.gradient(g_loss, gen_model.trainable_variables)
-    optimizer.apply_gradients(
-        grads_and_vars=zip(g_grads, gen_model.trainable_variables)
-    )
+        # -----------------------------
+        # Model
+        # -----------------------------
+        self.generator = None
+        self.discriminator = None
+        self.vgg = None
 
-    return g_loss
+        # -----------------------------
+        # Data
+        # -----------------------------
+        self.train_data = None
+        self.validate_data = None
 
+        # -----------------------------
+        # Loss
+        # -----------------------------
+        self.discriminator_loss_fn = tf.keras.losses.BinaryCrossentropy(
+            from_logits=False
+        )
+        self.mse_loss = tf.keras.losses.MeanSquaredError()
+        self.bce_loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)
 
-def train_discriminator(
-    gen_model, disc_model, loss_fn, optimizer, input_high, input_low
-):
-    with tf.GradientTape() as d_tape:
-        d_output_fake = disc_model(gen_model(input_low))
-        labels_fake = tf.zeros_like(d_output_fake)
+        self.best_generator_loss = best_generator_loss
 
-        d_output_real = disc_model(input_high)
-        labels_real = tf.ones_like(d_output_real)
+        # -----------------------------
+        # Optimizer
+        # -----------------------------
+        self.discriminator_optimizer = tf.keras.optimizers.Adam(learning_rate)
+        self.generator_optimizer = tf.keras.optimizers.Adam(learning_rate)
 
-        d_loss = loss_fn(y_true=labels_fake, y_pred=d_output_fake)
-        d_loss += loss_fn(y_true=labels_real, y_pred=d_output_real)
-
-    d_grads = d_tape.gradient(d_loss, disc_model.trainable_variables)
-    optimizer.apply_gradients(
-        grads_and_vars=zip(d_grads, disc_model.trainable_variables)
-    )
-
-    return d_loss
-
-
-def validate_generator(gen_model, disc_model, partial_vgg, input_low, input_high):
-    g_output = gen_model(input_low, training=False)
-    d_output = disc_model(g_output, training=False)
-    g_loss = content_mse_loss(input_high, g_output, d_output, model=partial_vgg)
-
-    return g_loss
-
-
-class SummaryWriter:
-    def __init__(self):
-        self.epoch = START_EPOCH
+        # -----------------------------
+        # Summary Writer
+        # -----------------------------
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         train_log_dir = "./logs/" + current_time + "/train"
         valid_log_dir = "./logs/" + current_time + "/valid"
         self.train_summary_writer = tf.summary.create_file_writer(train_log_dir)
         self.valid_summary_writer = tf.summary.create_file_writer(valid_log_dir)
 
-    def write(self, g_loss_mean, d_loss_mean, valid_loss):
-        with self.train_summary_writer.as_default():
-            tf.summary.scalar("g_loss", g_loss_mean, step=self.epoch)
-            tf.summary.scalar("d_loss", d_loss_mean, step=self.epoch)
-        with self.valid_summary_writer.as_default():
-            tf.summary.scalar("g_loss", valid_loss, step=self.epoch)
+        self._detect_device()
+        self._setup(height, width, weight)
+        self.checkpoint_path = checkpoint_path
+        self.make_checkpoint = len(checkpoint_path) > 0
 
-        self.epoch += 1
+    def _detect_device(self):
+        if tf.config.list_physical_devices("GPU"):
+            self.device_name = tf.test.gpu_device_name()
+        else:
+            self.device_name = "/CPU:0"
 
+    def _setup(self, h: int, w: int, weight: str):
+        with tf.device(self.device_name):
+            self.generator, self.discriminator, self.vgg = build_model(h, w, weight)
 
-def train(device_name):
-    with tf.device(device_name):
-        gen_model, disc_model, model = build_model(IMG_HEIGHT, IMG_WIDTH, WEIGHT)
+        self.train_data, self.validate_data = prepare_from_tfrecords()
 
-    train_data, valid_data = prepare_from_tfrecords()
-    disc_loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)
-    gen_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
-    disc_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
+    @tf.function
+    def _content_loss(self, lr: tf.Tensor, hr: tf.Tensor):
+        lr_vgg = self.vgg(lr) / 12.75
+        hr_vgg = self.vgg(hr) / 12.75
 
-    writer = SummaryWriter()
+        return self.mse_loss(lr_vgg, hr_vgg)
 
-    smallest_g_loss = 1e9
-    if WEIGHT != "":
-        smallest_g_loss = G_LOSS
+    def _adversarial_loss(self, output):
+        return self.bce_loss(tf.ones_like(output), output)
 
-    for epoch in range(START_EPOCH, EPOCHS):
-        g_losses = []
-        d_losses = []
+    @tf.function
+    def train_step(self, lr: tf.Tensor, hr: tf.Tensor) -> tuple[tf.Tensor]:
+        with tf.GradientTape() as g_tape, tf.GradientTape() as d_tape:
+            generated_fake = self.generator(lr)
 
-        for images in tqdm(train_data):
-            g_loss = train_generator(
-                gen_model=gen_model,
-                disc_model=disc_model,
-                partial_vgg=model,
-                optimizer=gen_optimizer,
-                input_high=images["high"],
-                input_low=images["low"],
+            real = self.discriminator(hr)
+            fake = self.discriminator(generated_fake)
+
+            d_loss = self.discriminator_loss_fn(real, tf.ones_like(real))
+            d_loss += self.discriminator_loss_fn(fake, tf.zeros_like(fake))
+
+            g_loss = self._content_loss(generated_fake, hr)
+            g_loss += self._adversarial_loss(generated_fake) * 1e-3
+
+        discriminator_grad = d_tape.gradient(
+            d_loss, self.discriminator.trainable_variables
+        )
+        generator_grad = g_tape.gradient(g_loss, self.generator.trainable_variables)
+        self.discriminator_optimizer.apply_gradients(
+            grads_and_vars=zip(
+                discriminator_grad, self.discriminator.trainable_variables
             )
-            d_loss = train_discriminator(
-                gen_model=gen_model,
-                disc_model=disc_model,
-                loss_fn=disc_loss,
-                optimizer=disc_optimizer,
-                input_high=images["high"],
-                input_low=images["low"],
-            )
-
-            g_losses.append(g_loss.numpy())
-            d_losses.append(d_loss.numpy())
-
-        g_loss_mean = np.mean(g_losses)
-        d_loss_mean = np.mean(d_losses)
-        print(
-            f"Epoch {epoch + 1}| Generator-Loss: {g_loss_mean:.3e},",
-            f"Discriminator-Loss: {d_loss_mean:.3e}",
+        )
+        self.generator_optimizer.apply_gradients(
+            grads_and_vars=zip(generator_grad, self.generator.trainable_variables)
         )
 
-        g_valid_losses = []
-        for images in tqdm(valid_data):
-            gen_loss = validate_generator(
-                gen_model, disc_model, model, images["low"], images["high"]
+        return g_loss, d_loss
+
+    @tf.function
+    def validation_step(self, lr: tf.Tensor, hr: tf.Tensor):
+        generated_fake = self.generator(lr)
+        real = self.discriminator(hr)
+        fake = self.discriminator(generated_fake)
+
+        d_loss = self.discriminator_loss_fn(real, tf.ones_like(real))
+        d_loss += self.discriminator_loss_fn(fake, tf.zeros_like(fake))
+
+        g_loss = self._content_loss(generated_fake, hr)
+        g_loss += self._adversarial_loss(generated_fake)
+
+        return g_loss, d_loss
+
+    def train(self):
+        for step in range(self.epochs):
+            d_loss_train = []
+            g_loss_train = []
+            for images in tqdm(self.train_data):
+                g_loss, d_loss = self.train_step(images["low"], images["high"])
+                g_loss_train.append(g_loss.numpy())
+                d_loss_train.append(d_loss.numpy())
+
+            g_loss_train_mean = np.mean(g_loss_train)
+            d_loss_train_mean = np.mean(d_loss_train)
+
+            with self.train_summary_writer.as_default():
+                tf.summary.scalar("g_loss", g_loss_train_mean, step=step)
+                tf.summary.scalar("d_loss", d_loss_train_mean, step=step)
+
+            print(
+                f"Epoch {step+ 1}| Generator-Loss: {g_loss_train_mean:.3e},",
+                f"Discriminator-Loss: {d_loss_train_mean:.3e}",
             )
-            g_valid_losses.append(gen_loss)
-        valid_loss = np.mean(g_valid_losses)
-        print(f"Validation| Generator-Loss: {valid_loss:.3e}")
 
-        if valid_loss < smallest_g_loss:
-            gen_model.save_weights(f"{CHECKPOINT_PATH}/generator_best")
-            disc_model.save_weights(f"{CHECKPOINT_PATH}/discriminator_best")
+            d_loss_valid = []
+            g_loss_valid = []
+            for images in tqdm(self.validate_data):
+                g_loss, d_loss = self.validation_step(images["low"], images["high"])
+                d_loss_valid.append(d_loss)
+                g_loss_valid.append(g_loss)
 
-            smallest_g_loss = valid_loss
-            print("Model saved")
+            g_loss_valid_mean = np.mean(g_loss_valid)
+            d_loss_valid_mean = np.mean(d_loss_valid)
 
-        writer.write(g_loss_mean, d_loss_mean, valid_loss)
+            with self.valid_summary_writer.as_default():
+                tf.summary.scalar("g_loss", g_loss_valid_mean, step=step)
+                tf.summary.scalar("d_loss", d_loss_valid_mean, step=step)
 
-        gen_model.save_weights(f"{CHECKPOINT_PATH}/generator_last")
-        disc_model.save_weights(f"{CHECKPOINT_PATH}/discriminator_last")
+            print(
+                f"Validation| Generator-Loss: {g_loss_valid_mean:.3e},",
+                f"Discriminator-Loss: {d_loss_valid_mean:.3e}",
+            )
+
+            if self.make_checkpoint:
+                self.generator.save_weights(f"{self.checkpoint_path}/generator_last")
+                self.discriminator.save_weights(
+                    f"{self.checkpoint_path}/discriminator_last"
+                )
+
+                if g_loss_valid_mean < self.best_generator_loss:
+                    self.best_generator_loss = g_loss_valid_mean
+                    self.generator.save_weights(
+                        f"{self.checkpoint_path}/generator_best"
+                    )
+                    self.discriminator.save_weights(
+                        f"{self.checkpoint_path}/discriminator_best"
+                    )
+
+                    print("Model Saved")
 
 
 if __name__ == "__main__":
-    if tf.config.list_physical_devices("GPU"):
-        device_name = tf.test.gpu_device_name()
-        # mixed_precision.set_global_policy("mixed_float16")
-    else:
-        device_name = "/CPU:0"
-
-    with open("config.yaml") as yfile:
-        config = yaml.safe_load(yfile)
-
-        EPOCHS = config["EPOCHS"]
-        IMG_HEIGHT = config["IMG_HEIGHT"]
-        IMG_WIDTH = config["IMG_WIDTH"]
-        LEARNING_RATE = config["LEARNING_RATE"]
-        CHECKPOINT_PATH = config["CHECKPOINT_PATH"]
-        START_EPOCH = config["START_EPOCH"]
-        WEIGHT = config["WEIGHT"]
-        G_LOSS = config["G_LOSS"]
-
-    train(device_name)
+    trainer = SRGANTrainer(checkpoint_path="./checkpoint/new_trainer")
+    trainer.train()
