@@ -42,6 +42,9 @@ def prepare_from_tfrecords():
         return {"high": high_image, "low": low_image}
 
     parsed_train_dataset = raw_image_dataset.map(_parse_image_dataset).batch(BATCH_SIZE)
+    parsed_train_dataset = parsed_train_dataset.prefetch(
+        buffer_size=tf.data.experimental.AUTOTUNE
+    )
 
     # Load validation dataset
     raw_image_dataset = tf.data.TFRecordDataset(VALIDATE_DATA_PATH)
@@ -51,6 +54,9 @@ def prepare_from_tfrecords():
     }
 
     parsed_valid_dataset = raw_image_dataset.map(_parse_image_dataset).batch(BATCH_SIZE)
+    parsed_valid_dataset = parsed_valid_dataset.prefetch(
+        buffer_size=tf.data.experimental.AUTOTUNE
+    )
     print("Dataset is loaded!")
 
     return parsed_train_dataset, parsed_valid_dataset
