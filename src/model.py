@@ -141,7 +141,7 @@ def build_model(height: int, width: int, weight: str):
     gen_model.build(input_shape=(None, height, width, 3))
     disc_model.build(input_shape=(None, height * 4, width * 4, 3))
 
-    if weight != "":
+    if weight is not None:
         print("Loading weights...")
         gen_model.load_weights(f"{weight}/generator_last")
         disc_model.load_weights(f"{weight}/discriminator_last")
