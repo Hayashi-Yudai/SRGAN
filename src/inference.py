@@ -14,7 +14,7 @@ def inference(image):
     height, width, ch = validate_image.shape
 
     gen_model = make_generator()
-    gen_model.load_weights("./checkpoint/generator")
+    gen_model.load_weights("./checkpoint/new_trainer/generator_best")
 
     output = (
         (
@@ -31,3 +31,11 @@ def inference(image):
     plt.figure()
     plt.imshow(output[0])
     plt.show()
+
+
+if __name__ == "__main__":
+    image = "./datasets/DIV2K_train_HR/validate/low_resolution/00046.png"
+    plt.imshow(Image.open(image))
+    plt.show()
+
+    inference(image)

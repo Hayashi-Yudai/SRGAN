@@ -2,10 +2,10 @@ EPOCHS: 200
 BATCH_SIZE: 16
 IMG_HEIGHT: 32
 IMG_WIDTH: 32
-LEARNING_RATE: 0.00001
-TRAIN_DATA_PATH: gs://div2k_dataset/train.tfrecords
-VALIDATE_DATA_PATH: gs://div2k_dataset/valid.tfrecords
-CHECKPOINT_PATH: ./checkpoint/test
-START_EPOCH: 40
-WEIGHT: ./checkpoint/test
-G_LOSS: 0.05386
+LEARNING_RATE: 0.0001
+TRAIN_DATA_PATH: ./datasets/DIV2K_train_HR/train.tfrecords
+VALIDATE_DATA_PATH: ./datasets/DIV2K_train_HR/valid.tfrecords
+CHECKPOINT_PATH: ./checkpoint/mse_vgg
+START_EPOCH: 0
+WEIGHT: 
+G_LOSS: 10000
