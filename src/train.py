@@ -190,6 +190,66 @@ class SRGANTrainer:
                     )
 
                     print("Model Saved")
+    
+    def train_generator_step(self, lr: tf.Tensor, hr: tf.Tensor):
+        with tf.GradientTape() as tape:
+            generated_fake = self.generator(lr)
+            g_loss = self.mse_loss(generated_fake, hr)
+
+        generator_grad = tape.gradient(g_loss, self.generator.trainable_variables)
+        self.generator_optimizer.apply_gradients(
+            grads_and_vars=zip(generator_grad, self.generator.trainable_variables)
+        )
+
+        return g_loss
+    
+    def validation_generator_step(self, lr: tf.Tensor, hr: tf.Tensor):
+        generated_fake = self.generator(lr)
+        g_loss = self.mse_loss(generated_fake, hr)
+
+        return g_loss
+
+    
+    def train_generator(self, start_epoch):
+        for step in range(self.epochs):
+            g_loss_train = []
+            for images in tqdm(self.train_data):
+                g_loss = self.train_generator_step(images["low"], images["high"])
+                g_loss_train.append(g_loss.numpy())
+
+            g_loss_train_mean = np.mean(g_loss_train)
+
+            with self.train_summary_writer.as_default():
+                tf.summary.scalar("g_loss", g_loss_train_mean, step=step)
+
+            print(
+                f"Epoch {step+ 1}| Generator-Loss: {g_loss_train_mean:.3e},",
+            )
+
+            g_loss_valid = []
+            for images in tqdm(self.validate_data):
+                g_loss = self.validation_step(images["low"], images["high"])
+                g_loss_valid.append(g_loss)
+
+            g_loss_valid_mean = np.mean(g_loss_valid)
+
+            with self.valid_summary_writer.as_default():
+                tf.summary.scalar("g_loss", g_loss_valid_mean, step=step)
+
+            print(
+                f"Validation| Generator-Loss: {g_loss_valid_mean:.3e},",
+            )
+
+            if self.make_checkpoint:
+                self.generator.save_weights(f"{self.checkpoint_path}/generator_last")
+
+                if g_loss_valid_mean < self.best_generator_loss:
+                    self.best_generator_loss = g_loss_valid_mean
+                    self.generator.save_weights(
+                        f"{self.checkpoint_path}/generator_best"
+                    )
+
+                    print("Model Saved")          
 
 
 if __name__ == "__main__":
