@@ -10,7 +10,7 @@ def inference(image):
         Image.open(image),
         dtype=np.float16,
     )
-    validate_image = (validate_image - 122.5) / 255.0
+    validate_image = validate_image / 255.0
     height, width, ch = validate_image.shape
 
     gen_model = make_generator()

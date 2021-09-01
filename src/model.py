@@ -15,11 +15,11 @@ class BResidualBlock(Model):
         super(BResidualBlock, self).__init__()
 
         self.conv = Conv2D(filters=64, kernel_size=3, strides=1, padding="same")
-        self.bn = BatchNormalization()
-        self.prelu = PReLU()
+        self.bn = BatchNormalization(momentum=0.8)
+        self.prelu = PReLU(shared_axes=[1, 2])
 
         self.conv2 = Conv2D(filters=64, kernel_size=3, strides=1, padding="same")
-        self.bn2 = BatchNormalization()
+        self.bn2 = BatchNormalization(momentum=0.8)
 
     def call(self, input_tensor, training=True):
         x = self.conv(input_tensor)
@@ -44,7 +44,7 @@ class ResidualBlock(Model):
         self.residual5 = BResidualBlock()
 
         self.conv = Conv2D(filters=64, kernel_size=3, padding="same")
-        self.bn = BatchNormalization()
+        self.bn = BatchNormalization(momentum=0.8)
 
     def call(self, input_tensor, training=True):
         x = self.residual1(input_tensor)
@@ -67,10 +67,10 @@ class DiscriminatorBlock(Model):
         self.filters = filters
 
         self.conv1 = Conv2D(filters=filters, kernel_size=3, strides=1, padding="same")
-        self.bn1 = BatchNormalization()
+        self.bn1 = BatchNormalization(momentum=0.8)
         self.lrelu1 = LeakyReLU(alpha=0.2)
         self.conv2 = Conv2D(filters=filters, kernel_size=3, strides=2, padding="same")
-        self.bn2 = BatchNormalization()
+        self.bn2 = BatchNormalization(momentum=0.8)
         self.lrelu2 = LeakyReLU(alpha=0.2)
 
     def call(self, input_tensor, training=True):
@@ -98,14 +98,14 @@ def make_generator():
     model = Sequential(
         [
             Conv2D(filters=64, kernel_size=9, padding="same"),
-            PReLU(),
+            PReLU(shared_axes=[1, 2]),
             ResidualBlock(),
             Conv2D(filters=256, kernel_size=3, padding="same"),
             PixelShuffler(),
-            PReLU(),
+            PReLU(shared_axes=[1, 2]),
             Conv2D(filters=256, kernel_size=3, padding="same"),
             PixelShuffler(),
-            PReLU(),
+            PReLU(shared_axes=[1, 2]),
             Conv2D(filters=3, kernel_size=9, padding="same"),
         ]
     )
@@ -119,7 +119,7 @@ def make_discriminator():
             Conv2D(filters=64, kernel_size=3, padding="same"),
             LeakyReLU(alpha=0.2),
             Conv2D(filters=64, kernel_size=3, strides=2, padding="same"),
-            BatchNormalization(),
+            BatchNormalization(momentum=0.8),
             LeakyReLU(alpha=0.2),
             DiscriminatorBlock(128),
             DiscriminatorBlock(256),
