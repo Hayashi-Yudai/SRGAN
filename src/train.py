@@ -228,7 +228,7 @@ class SRGANTrainer:
 
             g_loss_valid = []
             for images in tqdm(self.validate_data):
-                g_loss = self.validation_step(images["low"], images["high"])
+                g_loss = self.validation_generator_step(images["low"], images["high"])
                 g_loss_valid.append(g_loss)
 
             g_loss_valid_mean = np.mean(g_loss_valid)
