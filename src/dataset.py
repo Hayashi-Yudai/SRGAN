@@ -37,7 +37,7 @@ def prepare_from_tfrecords():
         low_image = tf.cast(low_image, tf.float16)
 
         high_image = (high_image - 122.5) / 255.0
-        low_image = (low_image - 122.5) / 255.0
+        low_image = low_image / 255.0
 
         return {"high": high_image, "low": low_image}
 
