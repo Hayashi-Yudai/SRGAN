@@ -2,9 +2,122 @@ import datetime
 import tensorflow as tf
 from tqdm import tqdm
 import numpy as np
+import yaml
 
-from model import build_model
+from model import build_model, make_generator
 from dataset import prepare_from_tfrecords
+
+
+class SRResNetTrainer:
+    def __init__(
+        self,
+        epochs: int = 10000,
+        batch_size: int = 32,
+        learning_rate: float = 1e-4,
+        training_data_path: str = "./datasets/train.tfrecords",
+        validate_data_path: str = "./datasets/valid.tfrecords",
+        height: int = 32,
+        width: int = 32,
+        weight: str = None,
+        checkpoint_path: str = "./checkpoint",
+        best_generator_loss: float = 1e9,
+    ):
+        self.epochs = epochs
+        self.batch_size = batch_size
+
+        self.generator = make_generator()
+        if weight is not None and weight != "":
+            print("Loading weights ...")
+            self.generator.load_weights(weight)
+
+        self.train_data, self.validate_data = prepare_from_tfrecords(
+            train_data=training_data_path,
+            validate_data=validate_data_path,
+            height=height,
+            width=width,
+            batch_size=batch_size,
+        )
+        self.mse_loss = tf.keras.losses.MeanSquaredError()
+        self.best_generator_loss = best_generator_loss
+        self.generator_optimizer = tf.keras.optimizers.Adam(learning_rate)
+
+        self.checkpoint_path = checkpoint_path
+        self.make_checkpoint = len(checkpoint_path) > 0
+
+        current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        train_log_dir = "./logs/" + current_time + "/train_generator"
+        valid_log_dir = "./logs/" + current_time + "/valid_generator"
+        self.train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+        self.valid_summary_writer = tf.summary.create_file_writer(valid_log_dir)
+
+        self._detect_device()
+
+    def _detect_device(self):
+        if tf.config.list_physical_devices("GPU"):
+            self.device_name = tf.test.gpu_device_name()
+        else:
+            self.device_name = "/CPU:0"
+
+    @tf.function
+    def train_step(self, lr: tf.Tensor, hr: tf.Tensor):
+        with tf.GradientTape() as tape:
+            generated_fake = self.generator(lr)
+            g_loss = self.mse_loss(generated_fake, hr)
+
+        generator_grad = tape.gradient(g_loss, self.generator.trainable_variables)
+        self.generator_optimizer.apply_gradients(
+            grads_and_vars=zip(generator_grad, self.generator.trainable_variables)
+        )
+
+        return g_loss
+
+    @tf.function
+    def validation_step(self, lr: tf.Tensor, hr: tf.Tensor):
+        generated_fake = self.generator(lr)
+        g_loss = self.mse_loss(generated_fake, hr)
+
+        return g_loss
+
+    def train(self, start_epoch=0):
+        for step in range(start_epoch, self.epochs):
+            g_loss_train = []
+            for images in tqdm(self.train_data):
+                g_loss = self.train_step(images["low"], images["high"])
+                g_loss_train.append(g_loss.numpy())
+
+            g_loss_train_mean = np.mean(g_loss_train)
+
+            with self.train_summary_writer.as_default():
+                tf.summary.scalar("g_loss", g_loss_train_mean, step=step)
+
+            print(
+                f"Epoch {step+ 1}| Generator-Loss: {g_loss_train_mean:.3e},",
+            )
+
+            g_loss_valid = []
+            for images in tqdm(self.validate_data):
+                g_loss = self.validation_step(images["low"], images["high"])
+                g_loss_valid.append(g_loss)
+
+            g_loss_valid_mean = np.mean(g_loss_valid)
+
+            with self.valid_summary_writer.as_default():
+                tf.summary.scalar("g_loss", g_loss_valid_mean, step=step)
+
+            print(
+                f"Validation| Generator-Loss: {g_loss_valid_mean:.3e},",
+            )
+
+            if self.make_checkpoint:
+                self.generator.save_weights(f"{self.checkpoint_path}/generator_last")
+
+                if g_loss_valid_mean < self.best_generator_loss:
+                    self.best_generator_loss = g_loss_valid_mean
+                    self.generator.save_weights(
+                        f"{self.checkpoint_path}/generator_best"
+                    )
+
+                    print("Model Saved")
 
 
 class SRGANTrainer:
@@ -12,7 +125,7 @@ class SRGANTrainer:
         self,
         epochs: int = 100,
         batch_size: int = 16,
-        learning_rate: float = 1e-5,
+        learning_rate: float = 1e-4,
         height: int = 32,
         width: int = 32,
         weight: str = None,
@@ -190,68 +303,38 @@ class SRGANTrainer:
                     )
 
                     print("Model Saved")
-    
-    def train_generator_step(self, lr: tf.Tensor, hr: tf.Tensor):
-        with tf.GradientTape() as tape:
-            generated_fake = self.generator(lr)
-            g_loss = self.mse_loss(generated_fake, hr)
-
-        generator_grad = tape.gradient(g_loss, self.generator.trainable_variables)
-        self.generator_optimizer.apply_gradients(
-            grads_and_vars=zip(generator_grad, self.generator.trainable_variables)
-        )
-
-        return g_loss
-    
-    def validation_generator_step(self, lr: tf.Tensor, hr: tf.Tensor):
-        generated_fake = self.generator(lr)
-        g_loss = self.mse_loss(generated_fake, hr)
-
-        return g_loss
-
-    
-    def train_generator(self, start_epoch):
-        for step in range(self.epochs):
-            g_loss_train = []
-            for images in tqdm(self.train_data):
-                g_loss = self.train_generator_step(images["low"], images["high"])
-                g_loss_train.append(g_loss.numpy())
-
-            g_loss_train_mean = np.mean(g_loss_train)
-
-            with self.train_summary_writer.as_default():
-                tf.summary.scalar("g_loss", g_loss_train_mean, step=step)
-
-            print(
-                f"Epoch {step+ 1}| Generator-Loss: {g_loss_train_mean:.3e},",
-            )
-
-            g_loss_valid = []
-            for images in tqdm(self.validate_data):
-                g_loss = self.validation_generator_step(images["low"], images["high"])
-                g_loss_valid.append(g_loss)
-
-            g_loss_valid_mean = np.mean(g_loss_valid)
-
-            with self.valid_summary_writer.as_default():
-                tf.summary.scalar("g_loss", g_loss_valid_mean, step=step)
-
-            print(
-                f"Validation| Generator-Loss: {g_loss_valid_mean:.3e},",
-            )
-
-            if self.make_checkpoint:
-                self.generator.save_weights(f"{self.checkpoint_path}/generator_last")
-
-                if g_loss_valid_mean < self.best_generator_loss:
-                    self.best_generator_loss = g_loss_valid_mean
-                    self.generator.save_weights(
-                        f"{self.checkpoint_path}/generator_best"
-                    )
-
-                    print("Model Saved")          
 
 
 if __name__ == "__main__":
+    with open("config.yaml") as yfile:
+        config = yaml.safe_load(yfile)
+
+        training_data_path = config["TRAIN_DATA_PATH"]
+        validate_data_path = config["VALIDATE_DATA_PATH"]
+        height = config["IMG_HEIGHT"]
+        width = config["IMG_WIDTH"]
+        epochs = config["EPOCHS"]
+        batch_size = config["BATCH_SIZE"]
+        learning_rate = config["LEARNING_RATE"]
+        weight = config["WEIGHT"]
+        checkpoint_path = config["CHECKPOINT_PATH"]
+        best_generator_loss = config["G_LOSS"]
+        start_epoch = config["START_EPOCH"]
+
+    """
     trainer = SRGANTrainer(checkpoint_path="./checkpoint/new_trainer")
     trainer.train()
+    """
+    trainer = SRResNetTrainer(
+        epochs=epochs,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        training_data_path=training_data_path,
+        validate_data_path=validate_data_path,
+        height=height,
+        width=width,
+        weight=weight,
+        checkpoint_path=checkpoint_path,
+        best_generator_loss=best_generator_loss,
+    )
+    trainer.train(start_epoch=start_epoch)

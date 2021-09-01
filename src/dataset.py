@@ -1,23 +1,14 @@
 import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
-import yaml
 from PIL import Image
 
 
-def prepare_from_tfrecords():
+def prepare_from_tfrecords(train_data, validate_data, height, width, batch_size):
     print("Loading dataset ...")
-    with open("config.yaml") as yfile:
-        config = yaml.safe_load(yfile)
-
-        TRAIN_DATA_PATH = config["TRAIN_DATA_PATH"]
-        VALIDATE_DATA_PATH = config["VALIDATE_DATA_PATH"]
-        IMG_HEIGHT = config["IMG_HEIGHT"]
-        IMG_WIDTH = config["IMG_WIDTH"]
-        BATCH_SIZE = config["BATCH_SIZE"]
 
     # Load training dataset
-    raw_image_dataset = tf.data.TFRecordDataset(TRAIN_DATA_PATH)
+    raw_image_dataset = tf.data.TFRecordDataset(train_data)
     image_feature_description = {
         "high_image_raw": tf.io.FixedLenFeature([], tf.string),
         "low_image_raw": tf.io.FixedLenFeature([], tf.string),
@@ -27,11 +18,11 @@ def prepare_from_tfrecords():
         example = tf.io.parse_single_example(example_proto, image_feature_description)
         high_image = tf.reshape(
             tf.io.decode_raw(example["high_image_raw"], tf.uint8),
-            (IMG_HEIGHT * 4, IMG_WIDTH * 4, 3),
+            (height * 4, width * 4, 3),
         )
         low_image = tf.reshape(
             tf.io.decode_raw(example["low_image_raw"], tf.uint8),
-            (IMG_HEIGHT, IMG_WIDTH, 3),
+            (height, width, 3),
         )
         high_image = tf.cast(high_image, tf.float16)
         low_image = tf.cast(low_image, tf.float16)
@@ -41,19 +32,19 @@ def prepare_from_tfrecords():
 
         return {"high": high_image, "low": low_image}
 
-    parsed_train_dataset = raw_image_dataset.map(_parse_image_dataset).batch(BATCH_SIZE)
+    parsed_train_dataset = raw_image_dataset.map(_parse_image_dataset).batch(batch_size)
     parsed_train_dataset = parsed_train_dataset.prefetch(
         buffer_size=tf.data.experimental.AUTOTUNE
     )
 
     # Load validation dataset
-    raw_image_dataset = tf.data.TFRecordDataset(VALIDATE_DATA_PATH)
+    raw_image_dataset = tf.data.TFRecordDataset(validate_data)
     image_feature_description = {
         "high_image_raw": tf.io.FixedLenFeature([], tf.string),
         "low_image_raw": tf.io.FixedLenFeature([], tf.string),
     }
 
-    parsed_valid_dataset = raw_image_dataset.map(_parse_image_dataset).batch(BATCH_SIZE)
+    parsed_valid_dataset = raw_image_dataset.map(_parse_image_dataset).batch(batch_size)
     parsed_valid_dataset = parsed_valid_dataset.prefetch(
         buffer_size=tf.data.experimental.AUTOTUNE
     )
