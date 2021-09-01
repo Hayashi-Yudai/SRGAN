@@ -1,11 +1,12 @@
 EPOCHS: 10000
-BATCH_SIZE: 32
+BATCH_SIZE: 16
 IMG_HEIGHT: 32
 IMG_WIDTH: 32
 LEARNING_RATE: 0.0001
 TRAIN_DATA_PATH: ./datasets/DIV2K_train_HR/train.tfrecords
 VALIDATE_DATA_PATH: ./datasets/DIV2K_train_HR/valid.tfrecords
-CHECKPOINT_PATH: ./checkpoint/generator_train
-START_EPOCH: 64
-WEIGHT: ./checkpoint/generator_tarin/generator_last
-G_LOSS: 0.00316
+CHECKPOINT_PATH: ./checkpoint/gan_train
+START_EPOCH: 0
+GEN_WEIGHT: ./checkpoint/generator_tarin/generator_best
+DISC_WEIGHT: 
+G_LOSS: 1000000000

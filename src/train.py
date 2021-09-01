@@ -4,7 +4,7 @@ from tqdm import tqdm
 import numpy as np
 import yaml
 
-from model import build_model, make_generator
+from model import make_generator, make_discriminator, make_vgg
 from dataset import prepare_from_tfrecords
 
 
@@ -18,7 +18,7 @@ class SRResNetTrainer:
         validate_data_path: str = "./datasets/valid.tfrecords",
         height: int = 32,
         width: int = 32,
-        weight: str = None,
+        g_weight: str = None,
         checkpoint_path: str = "./checkpoint",
         best_generator_loss: float = 1e9,
     ):
@@ -26,9 +26,9 @@ class SRResNetTrainer:
         self.batch_size = batch_size
 
         self.generator = make_generator()
-        if weight is not None and weight != "":
-            print("Loading weights ...")
-            self.generator.load_weights(weight)
+        if g_weight is not None and g_weight != "":
+            print("Loading weights on generator...")
+            self.generator.load_weights(g_weight)
 
         self.train_data, self.validate_data = prepare_from_tfrecords(
             train_data=training_data_path,
@@ -49,14 +49,6 @@ class SRResNetTrainer:
         valid_log_dir = "./logs/" + current_time + "/valid_generator"
         self.train_summary_writer = tf.summary.create_file_writer(train_log_dir)
         self.valid_summary_writer = tf.summary.create_file_writer(valid_log_dir)
-
-        self._detect_device()
-
-    def _detect_device(self):
-        if tf.config.list_physical_devices("GPU"):
-            self.device_name = tf.test.gpu_device_name()
-        else:
-            self.device_name = "/CPU:0"
 
     @tf.function
     def train_step(self, lr: tf.Tensor, hr: tf.Tensor):
@@ -128,7 +120,10 @@ class SRGANTrainer:
         learning_rate: float = 1e-4,
         height: int = 32,
         width: int = 32,
-        weight: str = None,
+        g_weight: str = None,
+        d_weight: str = None,
+        training_data_path: str = "./datasets/train.tfrecords",
+        validate_data_path: str = "./datasets/valid.tfrecords",
         checkpoint_path: str = "./checkpoints",
         best_generator_loss: float = 1e9,
     ):
@@ -141,15 +136,27 @@ class SRGANTrainer:
         # -----------------------------
         # Model
         # -----------------------------
-        self.generator = None
-        self.discriminator = None
-        self.vgg = None
+        self.generator = make_generator()
+        self.discriminator = make_discriminator()
+        self.vgg = make_vgg(height=height, width=width)
+
+        if g_weight is not None and g_weight != "":
+            print("Loading weights on generator...")
+            self.generator.load_weights(g_weight)
+        if d_weight is not None and d_weight != "":
+            print("Loading weights on discriminator...")
+            self.discriminator.load_weights(d_weight)
 
         # -----------------------------
         # Data
         # -----------------------------
-        self.train_data = None
-        self.validate_data = None
+        self.train_data, self.validate_data = prepare_from_tfrecords(
+            train_data=training_data_path,
+            validate_data=validate_data_path,
+            height=height,
+            width=width,
+            batch_size=batch_size,
+        )
 
         # -----------------------------
         # Loss
@@ -177,22 +184,8 @@ class SRGANTrainer:
         self.train_summary_writer = tf.summary.create_file_writer(train_log_dir)
         self.valid_summary_writer = tf.summary.create_file_writer(valid_log_dir)
 
-        self._detect_device()
-        self._setup(height, width, weight)
         self.checkpoint_path = checkpoint_path
         self.make_checkpoint = len(checkpoint_path) > 0
-
-    def _detect_device(self):
-        if tf.config.list_physical_devices("GPU"):
-            self.device_name = tf.test.gpu_device_name()
-        else:
-            self.device_name = "/CPU:0"
-
-    def _setup(self, h: int, w: int, weight: str):
-        with tf.device(self.device_name):
-            self.generator, self.discriminator, self.vgg = build_model(h, w, weight)
-
-        self.train_data, self.validate_data = prepare_from_tfrecords()
 
     @tf.function
     def _content_loss(self, lr: tf.Tensor, hr: tf.Tensor):
@@ -243,12 +236,12 @@ class SRGANTrainer:
         d_loss += self.discriminator_loss_fn(fake, tf.zeros_like(fake))
 
         g_loss = self._content_loss(generated_fake, hr)
-        g_loss += self._adversarial_loss(generated_fake)
+        g_loss += self._adversarial_loss(generated_fake) * 1e-3
 
         return g_loss, d_loss
 
-    def train(self):
-        for step in range(self.epochs):
+    def train(self, start_epoch):
+        for step in range(start_epoch, self.epochs):
             d_loss_train = []
             g_loss_train = []
             for images in tqdm(self.train_data):
@@ -316,14 +309,25 @@ if __name__ == "__main__":
         epochs = config["EPOCHS"]
         batch_size = config["BATCH_SIZE"]
         learning_rate = config["LEARNING_RATE"]
-        weight = config["WEIGHT"]
+        g_weight = config["GEN_WEIGHT"]
+        d_weight = config["DISC_WEIGHT"]
         checkpoint_path = config["CHECKPOINT_PATH"]
         best_generator_loss = config["G_LOSS"]
         start_epoch = config["START_EPOCH"]
 
-    """
-    trainer = SRGANTrainer(checkpoint_path="./checkpoint/new_trainer")
-    trainer.train()
+    trainer = SRGANTrainer(
+        epochs=epochs,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        training_data_path=training_data_path,
+        validate_data_path=validate_data_path,
+        height=height,
+        width=width,
+        g_weight=g_weight,
+        d_weight=d_weight,
+        checkpoint_path=checkpoint_path,
+        best_generator_loss=best_generator_loss,
+    )
     """
     trainer = SRResNetTrainer(
         epochs=epochs,
@@ -333,8 +337,9 @@ if __name__ == "__main__":
         validate_data_path=validate_data_path,
         height=height,
         width=width,
-        weight=weight,
+        weight=g_weight,
         checkpoint_path=checkpoint_path,
         best_generator_loss=best_generator_loss,
     )
+    """
     trainer.train(start_epoch=start_epoch)
