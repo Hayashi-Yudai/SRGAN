@@ -315,6 +315,7 @@ if __name__ == "__main__":
         best_generator_loss = config["G_LOSS"]
         start_epoch = config["START_EPOCH"]
 
+    """
     trainer = SRGANTrainer(
         epochs=epochs,
         batch_size=batch_size,
@@ -337,9 +338,8 @@ if __name__ == "__main__":
         validate_data_path=validate_data_path,
         height=height,
         width=width,
-        weight=g_weight,
+        g_weight=g_weight,
         checkpoint_path=checkpoint_path,
         best_generator_loss=best_generator_loss,
     )
-    """
     trainer.train(start_epoch=start_epoch)
