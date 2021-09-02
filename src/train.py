@@ -189,6 +189,11 @@ class SRGANTrainer:
 
     @tf.function
     def _content_loss(self, lr: tf.Tensor, hr: tf.Tensor):
+        lr = (lr + 1) * 127.5
+        hr = (hr + 1) * 127.5
+
+        lr = tf.keras.applications.vgg19.preprocess_input(lr)
+        hr = tf.keras.applications.vgg19.preprocess_input(hr)
         lr_vgg = self.vgg(lr) / 12.75
         hr_vgg = self.vgg(hr) / 12.75
 
