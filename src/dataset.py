@@ -24,15 +24,16 @@ def prepare_from_tfrecords(train_data, validate_data, height, width, batch_size)
             tf.io.decode_raw(example["low_image_raw"], tf.uint8),
             (height, width, 3),
         )
-        high_image = tf.cast(high_image, tf.float16)
-        low_image = tf.cast(low_image, tf.float16)
 
-        high_image = (high_image - 127.5) / 127.5
-        low_image = low_image / 255.0
+        return high_image, low_image
 
-        return {"high": high_image, "low": low_image}
-
-    parsed_train_dataset = raw_image_dataset.map(_parse_image_dataset).batch(batch_size)
+    parsed_train_dataset = (
+        raw_image_dataset.map(_parse_image_dataset)
+        .map(scale_image)
+        .map(flip_left_right)
+        .map(to_dict)
+        .batch(batch_size)
+    )
     parsed_train_dataset = parsed_train_dataset.prefetch(
         buffer_size=tf.data.experimental.AUTOTUNE
     )
@@ -44,13 +45,42 @@ def prepare_from_tfrecords(train_data, validate_data, height, width, batch_size)
         "low_image_raw": tf.io.FixedLenFeature([], tf.string),
     }
 
-    parsed_valid_dataset = raw_image_dataset.map(_parse_image_dataset).batch(batch_size)
+    parsed_valid_dataset = (
+        raw_image_dataset.map(_parse_image_dataset)
+        .map(scale_image)
+        .map(flip_left_right)
+        .map(to_dict)
+        .batch(batch_size)
+    )
     parsed_valid_dataset = parsed_valid_dataset.prefetch(
         buffer_size=tf.data.experimental.AUTOTUNE
     )
     print("Dataset is loaded!")
 
     return parsed_train_dataset, parsed_valid_dataset
+
+
+@tf.function
+def scale_image(hr: tf.Tensor, lr: tf.Tensor):
+    hr = tf.cast(hr, tf.float32)
+    lr = tf.cast(lr, tf.float32)
+
+    return (hr - 127.5) / 127.5, lr / 255.0
+
+
+@tf.function
+def flip_left_right(hr: tf.Tensor, lr: tf.Tensor):
+    seed = np.random.randint(1000)
+
+    hr = tf.image.random_flip_left_right(hr, seed=seed)
+    lr = tf.image.random_flip_left_right(lr, seed=seed)
+
+    return hr, lr
+
+
+@tf.function
+def to_dict(hr: tf.Tensor, lr: tf.Tensor):
+    return {"high": hr, "low": lr}
 
 
 def _bytes_feature(value):
