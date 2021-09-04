@@ -48,6 +48,54 @@ The parameters like hyper-parameters are set in the config.yaml
 
 ### Training
 
+#### Pre-training SRResNet
+
+config.yaml
+```
+TYPE: SRResNet
+EPOCHS: 10000
+BATCH_SIZE: 16
+IMG_HEIGHT: 32
+IMG_WIDTH: 32
+LEARNING_RATE: 0.0001
+TRAIN_DATA_PATH: ./datasets/train.tfrecords
+VALIDATE_DATA_PATH: ./datasets/valid.tfrecords
+CHECKPOINT_PATH: ./checkpoint/generator_train
+START_EPOCH: 0
+GEN_WEIGHT: 
+DISC_WEIGHT: 
+G_LOSS: 100000000
+```
+
+Start training with the following command
+
 ```bash
-python src/train.py
+$ python src/train.py
+$ pipenv run train  # If you use pipenv
+```
+
+#### Training SRGAN
+
+config.yaml
+```
+TYPE: SRGAN
+EPOCHS: 10000
+BATCH_SIZE: 16
+IMG_HEIGHT: 32
+IMG_WIDTH: 32
+LEARNING_RATE: 0.0001
+TRAIN_DATA_PATH: ./datasets/train.tfrecords
+VALIDATE_DATA_PATH: ./datasets/valid.tfrecords
+CHECKPOINT_PATH: ./checkpoint/gan_train
+START_EPOCH: 0
+GEN_WEIGHT: ./generator_train/generator_best
+DISC_WEIGHT: 
+G_LOSS: 100000000
+```
+
+Start training with the following command
+
+```bash
+$ python src/train.py
+$ pipenv run train  # If you use pipenv
 ```
