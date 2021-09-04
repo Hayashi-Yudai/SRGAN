@@ -307,6 +307,7 @@ if __name__ == "__main__":
     with open("config.yaml") as yfile:
         config = yaml.safe_load(yfile)
 
+        train_type = config["TYPE"]
         training_data_path = config["TRAIN_DATA_PATH"]
         validate_data_path = config["VALIDATE_DATA_PATH"]
         height = config["IMG_HEIGHT"]
@@ -320,31 +321,34 @@ if __name__ == "__main__":
         best_generator_loss = config["G_LOSS"]
         start_epoch = config["START_EPOCH"]
 
-    """
-    trainer = SRGANTrainer(
-        epochs=epochs,
-        batch_size=batch_size,
-        learning_rate=learning_rate,
-        training_data_path=training_data_path,
-        validate_data_path=validate_data_path,
-        height=height,
-        width=width,
-        g_weight=g_weight,
-        d_weight=d_weight,
-        checkpoint_path=checkpoint_path,
-        best_generator_loss=best_generator_loss,
-    )
-    """
-    trainer = SRResNetTrainer(
-        epochs=epochs,
-        batch_size=batch_size,
-        learning_rate=learning_rate,
-        training_data_path=training_data_path,
-        validate_data_path=validate_data_path,
-        height=height,
-        width=width,
-        g_weight=g_weight,
-        checkpoint_path=checkpoint_path,
-        best_generator_loss=best_generator_loss,
-    )
+    if train_type == "SRResNet":
+        trainer = SRResNetTrainer(
+            epochs=epochs,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            training_data_path=training_data_path,
+            validate_data_path=validate_data_path,
+            height=height,
+            width=width,
+            g_weight=g_weight,
+            checkpoint_path=checkpoint_path,
+            best_generator_loss=best_generator_loss,
+        )
+    elif train_type == "SRGAN":
+        trainer = SRGANTrainer(
+            epochs=epochs,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            training_data_path=training_data_path,
+            validate_data_path=validate_data_path,
+            height=height,
+            width=width,
+            g_weight=g_weight,
+            d_weight=d_weight,
+            checkpoint_path=checkpoint_path,
+            best_generator_loss=best_generator_loss,
+        )
+    else:
+        raise ValueError("TYPE should be SRResNet or SRGAN")
+
     trainer.train(start_epoch=start_epoch)

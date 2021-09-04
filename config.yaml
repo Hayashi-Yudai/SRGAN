@@ -1,4 +1,5 @@
-EPOCHS: 10000
+TYPE: SRGAN
+EPOCHS: 500
 BATCH_SIZE: 16
 IMG_HEIGHT: 32
 IMG_WIDTH: 32
@@ -7,6 +8,6 @@ TRAIN_DATA_PATH: ./datasets/DIV2K_train_HR/train.tfrecords
 VALIDATE_DATA_PATH: ./datasets/DIV2K_train_HR/valid.tfrecords
 CHECKPOINT_PATH: ./checkpoint/gan_train
 START_EPOCH: 0
-GEN_WEIGHT: ./checkpoint/generator_tarin/generator_best
+GEN_WEIGHT: ./checkpoint/generator_train/generator_best
 DISC_WEIGHT: 
-G_LOSS: 1000000000
+G_LOSS: 100000000
