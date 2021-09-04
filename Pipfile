@@ -5,7 +5,6 @@ name = "pypi"
 
 [packages]
 tensorflow = "==2.6.0"
-jupyter = "*"
 pillow = "*"
 matplotlib = "*"
 tqdm = "*"
