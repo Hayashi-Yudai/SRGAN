@@ -8,7 +8,7 @@
 ## Network structure
 
 ![https://arxiv.org/pdf/1609.04802.pdf](https://github.com/Hayashi-Yudai/SRGAN/blob/main/assets/network_img.png "cited from https://arxiv.org/pdf/1609.04802.pdf")
-
+cited from https://arxiv.org/pdf/1609.04802.pdf
 
 ## How to train
 
@@ -40,17 +40,16 @@ python src/dataset.py
 
 Make sure there exists `train.tfrecords` and `valid.tfrecords` in the `datasets/(your dataset name)` directory.
 
-
 ### Configure parameters
 
 The parameters like hyper-parameters are set in the config.yaml
-
 
 ### Training
 
 #### Pre-training SRResNet
 
 config.yaml
+
 ```
 TYPE: SRResNet
 EPOCHS: 10000
@@ -62,8 +61,8 @@ TRAIN_DATA_PATH: ./datasets/train.tfrecords
 VALIDATE_DATA_PATH: ./datasets/valid.tfrecords
 CHECKPOINT_PATH: ./checkpoint/generator_train
 START_EPOCH: 0
-GEN_WEIGHT: 
-DISC_WEIGHT: 
+GEN_WEIGHT:
+DISC_WEIGHT:
 G_LOSS: 100000000
 ```
 
@@ -77,6 +76,7 @@ $ pipenv run train  # If you use pipenv
 #### Training SRGAN
 
 config.yaml
+
 ```
 TYPE: SRGAN
 EPOCHS: 10000
@@ -89,7 +89,7 @@ VALIDATE_DATA_PATH: ./datasets/valid.tfrecords
 CHECKPOINT_PATH: ./checkpoint/gan_train
 START_EPOCH: 0
 GEN_WEIGHT: ./generator_train/generator_best
-DISC_WEIGHT: 
+DISC_WEIGHT:
 G_LOSS: 100000000
 ```
 
