@@ -20,14 +20,15 @@ def inference(image):
     height, width, ch = validate_image.shape
 
     gen_model = make_generator()
-    gen_model.load_weights("./checkpoint/generator_train/generator_best")
+    gen_model.load_weights("./checkpoint/gan_train/generator_best")
 
     output = (
         (
             gen_model(
                 validate_image.reshape([1, height, width, ch]),
                 training=False,
-            ) * 127.5
+            )
+            * 127.5
             + 127.5
         )
         .numpy()
