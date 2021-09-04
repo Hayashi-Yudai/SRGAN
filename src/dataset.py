@@ -31,6 +31,7 @@ def prepare_from_tfrecords(train_data, validate_data, height, width, batch_size)
         raw_image_dataset.map(_parse_image_dataset)
         .map(scale_image)
         .map(flip_left_right)
+        .map(flip_up_down)
         .map(to_dict)
         .batch(batch_size)
     )
@@ -49,6 +50,7 @@ def prepare_from_tfrecords(train_data, validate_data, height, width, batch_size)
         raw_image_dataset.map(_parse_image_dataset)
         .map(scale_image)
         .map(flip_left_right)
+        .map(flip_up_down)
         .map(to_dict)
         .batch(batch_size)
     )
@@ -74,6 +76,16 @@ def flip_left_right(hr: tf.Tensor, lr: tf.Tensor):
 
     hr = tf.image.random_flip_left_right(hr, seed=seed)
     lr = tf.image.random_flip_left_right(lr, seed=seed)
+
+    return hr, lr
+
+
+@tf.function
+def flip_up_down(hr: tf.Tensor, lr: tf.Tensor):
+    seed = np.random.randint(1000)
+
+    hr = tf.image.random_flip_up_down(hr, seed=seed)
+    lr = tf.image.random_flip_up_down(lr, seed=seed)
 
     return hr, lr
 
