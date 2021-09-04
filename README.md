@@ -99,3 +99,8 @@ Start training with the following command
 $ python src/train.py
 $ pipenv run train  # If you use pipenv
 ```
+
+## Example
+
+
+![](https://github.com/Hayashi-Yudai/SRGAN/blob/main/assets/test_data.png)
