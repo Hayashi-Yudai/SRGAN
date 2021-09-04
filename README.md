@@ -102,5 +102,6 @@ $ pipenv run train  # If you use pipenv
 
 ## Example
 
+You can download pre-trained weight from [here](https://drive.google.com/drive/folders/1LE1AK0HVHN-_x9S3-aCUeA0mFT-D68VW?usp=sharing). This weights are trained with 32x32 images.
 
 ![](https://github.com/Hayashi-Yudai/SRGAN/blob/main/assets/test_data.png)
