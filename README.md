@@ -2,8 +2,8 @@
 
 ## Verification environment
 
-- Python 3.9.6
-- Tensorflow 2.6.0
+- Python 3.10.4
+- Tensorflow 2.10.0
 
 ## Network structure
 
@@ -35,7 +35,7 @@ Next, make low resolution images which have quarter size of original ones and pl
 This program request TFRecords as dataset. I prepare a function for you. Fix `dataset_name` and `extension` in the src/datasets.py and execute it from project root.
 
 ```bash
-python src/dataset.py
+poetry run python src/dataset.py
 ```
 
 Make sure there exists `train.tfrecords` and `valid.tfrecords` in the `datasets/(your dataset name)` directory.
@@ -69,8 +69,7 @@ G_LOSS: 100000000
 Start training with the following command
 
 ```bash
-$ python src/train.py
-$ pipenv run train  # If you use pipenv
+$ poetry run python src/train.py
 ```
 
 #### Training SRGAN
@@ -96,8 +95,7 @@ G_LOSS: 100000000
 Start training with the following command
 
 ```bash
-$ python src/train.py
-$ pipenv run train  # If you use pipenv
+$ poetry run python train
 ```
 
 ## Example
